@@ -100,10 +100,6 @@ copyDarwinDirectory(){
 }
 
 copyBuildDirectory() {
-    sed -i '' -e 's/__VERSION__/'${VERSION}'/g' ${TARGET_DIRECTORY}/darwin/scripts/postinstall
-    sed -i '' -e 's/__PRODUCT__/'${PRODUCT}'/g' ${TARGET_DIRECTORY}/darwin/scripts/postinstall
-    chmod -R 755 ${TARGET_DIRECTORY}/darwin/scripts/postinstall
-
     sed -i '' -e 's/__VERSION__/'${VERSION}'/g' ${TARGET_DIRECTORY}/darwin/Distribution
     sed -i '' -e 's/__PRODUCT__/'${PRODUCT}'/g' ${TARGET_DIRECTORY}/darwin/Distribution
     chmod -R 755 ${TARGET_DIRECTORY}/darwin/Distribution
@@ -111,14 +107,6 @@ copyBuildDirectory() {
     sed -i '' -e 's/__VERSION__/'${VERSION}'/g' ${TARGET_DIRECTORY}/darwin/Resources/*.html
     sed -i '' -e 's/__PRODUCT__/'${PRODUCT}'/g' ${TARGET_DIRECTORY}/darwin/Resources/*.html
     chmod -R 755 ${TARGET_DIRECTORY}/darwin/Resources/
-
-    rm -rf ${TARGET_DIRECTORY}/darwinpkg
-    mkdir -p ${TARGET_DIRECTORY}/darwinpkg
-
-    #Copy cellery product to /Library/Cellery
-    mkdir -p ${TARGET_DIRECTORY}/darwinpkg/Library/${PRODUCT}/${VERSION}
-    cp -a ./application/. ${TARGET_DIRECTORY}/darwinpkg/Library/${PRODUCT}/${VERSION}
-    chmod -R 755 ${TARGET_DIRECTORY}/darwinpkg/Library/${PRODUCT}/${VERSION}
 
     rm -rf ${TARGET_DIRECTORY}/package
     mkdir -p ${TARGET_DIRECTORY}/package
@@ -130,12 +118,24 @@ copyBuildDirectory() {
 }
 
 function buildPackage() {
-    log_info "Apllication installer package building started.(1/3)"
-    pkgbuild --identifier org.${PRODUCT}.${VERSION} \
+    log_info "buildPackage: Application installer package building started.(1/3)"
+
+    log_info "buildPackage: running pkgbuild --analyze..."
+    pkgbuild --analyze --root installroot component.plist
+
+    log_info "buildPackage: running plutil to set BundleIsRelocatable to FALSE..."
+    plutil -replace BundleIsRelocatable -bool NO component.plist
+
+    log_info "buildPackage: running pkgbuild..."
+    pkgbuild --identifier com.${PRODUCT}.${VERSION} \
     --version ${VERSION} \
     --scripts ${TARGET_DIRECTORY}/darwin/scripts \
-    --root ${TARGET_DIRECTORY}/darwinpkg \
-    ${TARGET_DIRECTORY}/package/${PRODUCT}.pkg > /dev/null 2>&1
+    --root installroot \
+    --install-location "/" \
+    --component-plist ./component.plist \
+    ${TARGET_DIRECTORY}/package/${PRODUCT}.pkg
+
+    log_info "buildPackage: done."
 }
 
 function buildProduct() {
@@ -143,7 +143,9 @@ function buildProduct() {
     productbuild --distribution ${TARGET_DIRECTORY}/darwin/Distribution \
     --resources ${TARGET_DIRECTORY}/darwin/Resources \
     --package-path ${TARGET_DIRECTORY}/package \
-    ${TARGET_DIRECTORY}/pkg/$1 > /dev/null 2>&1
+    ${TARGET_DIRECTORY}/pkg/$1
+
+    log_info "Artifact written to ${TARGET_DIRECTORY}/pkg/$1"
 }
 
 function signProduct() {
@@ -179,22 +181,12 @@ function createUninstaller(){
     sed -i '' -e "s/__PRODUCT__/${PRODUCT}/g" "${TARGET_DIRECTORY}/darwinpkg/Library/${PRODUCT}/${VERSION}/uninstall.sh"
 }
 
-#Pre-requisites
-command -v mvn -v >/dev/null 2>&1 || {
-    log_warn "Apache Maven was not found. Please install Maven first."
-    # exit 1
-}
-command -v ballerina >/dev/null 2>&1 || {
-    log_warn "Ballerina was not found. Please install ballerina first."
-    # exit 1
-}
-
 #Main script
 log_info "Installer generating process started."
 
 copyDarwinDirectory
 copyBuildDirectory
-createUninstaller
+#createUninstaller
 createInstaller
 
 log_info "Installer generating process finished"
